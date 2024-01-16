@@ -5,8 +5,8 @@
 
 import argparse
 from pathlib import Path
-
-from transformers import RobertaTokenizer, RobertaForSequenceClassification
+import pdb
+from transformers import RobertaTokenizer, RobertaForSequenceClassification, AutoTokenizer
 from transformers import XLNetTokenizer, XLNetForSequenceClassification
 # from transformers import XLNetTokenizer
 # from modeling.dummy_modeling_xlnet import XLNetForSequenceClassification
@@ -423,13 +423,18 @@ def train(local_rank, args):
     model_name = model_class_item['model_name']
     do_lower_case = model_class_item['do_lower_case'] if 'do_lower_case' in model_class_item else False
 
-    tokenizer = model_class_item['tokenizer'].from_pretrained(model_name,
-                                                              cache_dir=str(config.PRO_ROOT / "trans_cache"),
-                                                              do_lower_case=do_lower_case)
+    # tokenizer = model_class_item['tokenizer'].from_pretrained(model_name,
+    #                                                           cache_dir=str(config.PRO_ROOT / "trans_cache"),
+    #                                                           do_lower_case=do_lower_case)
 
-    model = model_class_item['sequence_classification'].from_pretrained(model_name,
-                                                                        cache_dir=str(config.PRO_ROOT / "trans_cache"),
-                                                                        num_labels=num_labels)
+    # model = model_class_item['sequence_classification'].from_pretrained(model_name,
+    #                                                                     cache_dir=str(config.PRO_ROOT / "trans_cache"),
+    #                                                                     num_labels=num_labels)
+    dir = 'src/result/my-unsup-simcse-bert-base-uncased/'
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    tokenizer= AutoTokenizer.from_pretrained(dir)
+    model = BertForSequenceClassification.from_pretrained(dir, num_labels=num_labels)
+    model = model.to(device)
 
     padding_token_value = tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0]
     padding_segement_value = model_class_item["padding_segement_value"]
@@ -681,7 +686,8 @@ def train(local_rank, args):
                                 attention_mask=batch['attention_mask'],
                                 token_type_ids=batch['token_type_ids'],
                                 labels=batch['y'])
-            loss, logits = outputs[:2]
+            loss = outputs['loss']
+            logits = outputs['logits']
             # print(debug_node_info(args), loss, logits, batch['uid'])
             # print(debug_node_info(args), loss, batch['uid'])
 
@@ -734,16 +740,18 @@ def train(local_rank, args):
 
                     if not args.debug_mode:
                         # save model:
-                        model_output_dir = checkpoints_path / current_checkpoint_filename
+                        model_output_dir = checkpoints_path / 'output'
                         if not model_output_dir.exists():
                             model_output_dir.mkdir()
                         model_to_save = (
                             model.module if hasattr(model, "module") else model
                         )  # Take care of distributed/parallel training
-
+                        
                         torch.save(model_to_save.state_dict(), str(model_output_dir / "model.pt"))
                         torch.save(optimizer.state_dict(), str(model_output_dir / "optimizer.pt"))
                         torch.save(scheduler.state_dict(), str(model_output_dir / "scheduler.pt"))
+                        tokenizer.save_pretrained(model_output_dir)
+                        
 
                     # save prediction:
                     if not args.debug_mode and args.save_prediction:
@@ -787,7 +795,7 @@ def train(local_rank, args):
 
             if not args.debug_mode:
                 # save model:
-                model_output_dir = checkpoints_path / current_checkpoint_filename
+                model_output_dir = checkpoints_path / 'output'
                 if not model_output_dir.exists():
                     model_output_dir.mkdir()
                 model_to_save = (
@@ -797,6 +805,7 @@ def train(local_rank, args):
                 torch.save(model_to_save.state_dict(), str(model_output_dir / "model.pt"))
                 torch.save(optimizer.state_dict(), str(model_output_dir / "optimizer.pt"))
                 torch.save(scheduler.state_dict(), str(model_output_dir / "scheduler.pt"))
+                tokenizer.save_pretrained(model_output_dir)
 
             # save prediction:
             if not args.debug_mode and args.save_prediction:
@@ -874,8 +883,9 @@ def eval_model(model, dev_dataloader, device_num, args):
                                 token_type_ids=batch['token_type_ids'],
                                 labels=batch['y'])
 
-            loss, logits = outputs[:2]
-
+            loss = outputs['loss']
+            logits = outputs['logits']
+            
             uid_list.extend(list(batch['uid']))
             y_list.extend(batch['y'].tolist())
             pred_list.extend(torch.max(logits, 1)[1].view(logits.size(0)).tolist())
