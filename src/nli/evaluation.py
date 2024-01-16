@@ -11,7 +11,7 @@ from flint.data_utils.fields import RawFlintField, LabelFlintField, ArrayIndexFl
 from utils import common, list_dict_data_tool, save_tool
 from nli.training import MODEL_CLASSES, registered_path, build_eval_dataset_loader_and_sampler, NLITransform, \
     NLIDataset, count_acc, evaluation_dataset, eval_model
-
+from transformers import AutoTokenizer
 import torch
 
 import pprint
@@ -70,13 +70,13 @@ def evaluation():
     tokenizer = model_class_item['tokenizer'].from_pretrained(model_name,
                                                               cache_dir=str(config.PRO_ROOT / "trans_cache"),
                                                               do_lower_case=do_lower_case)
-
+    # tokenizer = AutoTokenizer.from_pretrained('saved_models/01-15-15:20:24_adv_anli/checkpoints/output')
     model = model_class_item['sequence_classification'].from_pretrained(model_name,
                                                                         cache_dir=str(config.PRO_ROOT / "trans_cache"),
                                                                         num_labels=num_labels)
 
     model.load_state_dict(torch.load(model_checkpoint_path))
-
+    
     padding_token_value = tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0]
     padding_segement_value = model_class_item["padding_segement_value"]
     padding_att_value = model_class_item["padding_att_value"]
